@@ -13,11 +13,11 @@ app.use(express.json());
 app.get("/api/health", (_req, res) => {
     res.json({
         status: "OK",
-        application: "EcoTrack API",
+        application: "TravelWaste API",
         version: "1.0.0"
     });
 });
 
 app.listen(PORT, () => {
-    console.log(`🚀 EcoTrack API avviata sulla porta ${PORT}`);
+    console.log(`🚀 TravelWaste API avviata sulla porta ${PORT}`);
 });
