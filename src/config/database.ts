@@ -1,4 +1,7 @@
+import "dotenv/config";
 import mysql from "mysql2/promise";
+import fs from "fs";
+import path from "path";
 
 const requiredEnvVariables = [
   "DB_HOST",
@@ -13,12 +16,19 @@ for (const variable of requiredEnvVariables) {
   }
 }
 
+const caPath = path.resolve(process.cwd(), "certs/global-bundle.pem");
+
 export const db = mysql.createPool({
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT ?? 3306),
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
+
+  ssl: {
+    ca: fs.readFileSync(caPath, "utf8"),
+    rejectUnauthorized: true,
+  },
 
   waitForConnections: true,
   connectionLimit: 10,
