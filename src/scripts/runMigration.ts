@@ -5,25 +5,48 @@ import { db } from "../config/database";
 
 async function runMigration() {
   try {
-    const migrationPath = path.resolve(
+    const migrationsDirectory = path.resolve(
       process.cwd(),
-      "sql/001_create_maps.sql"
+      "sql"
     );
 
-    const sql = fs.readFileSync(migrationPath, "utf8");
+    const migrationFiles = fs
+      .readdirSync(migrationsDirectory)
+      .filter((file) => file.endsWith(".sql"))
+      .sort();
 
-    const statements = sql
-      .split(";")
-      .map((statement) => statement.trim())
-      .filter(Boolean);
+    console.log(
+      `Found ${migrationFiles.length} migration files.`
+    );
 
-    console.log(`Running ${statements.length} SQL statements...`);
+    for (const file of migrationFiles) {
+      console.log(`Running migration: ${file}`);
 
-    for (const statement of statements) {
-      await db.query(statement);
+      const migrationPath = path.join(
+        migrationsDirectory,
+        file
+      );
+
+      const sql = fs.readFileSync(
+        migrationPath,
+        "utf8"
+      );
+
+      const statements = sql
+        .split(";")
+        .map((statement) => statement.trim())
+        .filter(Boolean);
+
+      for (const statement of statements) {
+        await db.query(statement);
+      }
+
+      console.log(`Migration completed: ${file}`);
     }
 
-    console.log("Migration completed successfully.");
+    console.log(
+      "All migrations completed successfully."
+    );
   } catch (error) {
     console.error("Migration failed:", error);
     process.exitCode = 1;

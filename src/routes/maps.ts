@@ -12,6 +12,7 @@ router.get("/", async (_req, res) => {
     const [rows] = await db.query(`
       SELECT
         m.id,
+        m.practice_id AS practiceId,
         m.name,
         m.location,
         m.customer,
@@ -21,11 +22,28 @@ router.get("/", async (_req, res) => {
         m.created_by AS createdBy,
         m.created_at AS createdAt,
         m.updated_at AS updatedAt,
+        p.code AS practiceCode,
+        p.title AS practiceTitle,
         COUNT(mb.id) AS bagsCount
       FROM maps m
+      LEFT JOIN practices p
+        ON p.id = m.practice_id
       LEFT JOIN map_bags mb
         ON mb.map_id = m.id
-      GROUP BY m.id
+      GROUP BY
+        m.id,
+        m.practice_id,
+        m.name,
+        m.location,
+        m.customer,
+        m.responsible,
+        m.status,
+        m.notes,
+        m.created_by,
+        m.created_at,
+        m.updated_at,
+        p.code,
+        p.title
       ORDER BY m.updated_at DESC
     `);
 
@@ -35,6 +53,88 @@ router.get("/", async (_req, res) => {
 
     res.status(500).json({
       message: "Errore durante il recupero delle mappe",
+    });
+  }
+});
+
+/**
+ * GET /api/maps/practice/:practiceId
+ * Recupera la mappa associata a una pratica.
+ */
+router.get("/practice/:practiceId", async (req, res) => {
+  try {
+    const { practiceId } = req.params;
+
+    const [rows] = await db.query(
+      `
+        SELECT
+          m.id,
+          m.practice_id AS practiceId,
+          m.name,
+          m.location,
+          m.customer,
+          m.responsible,
+          m.status,
+          m.notes,
+          m.created_by AS createdBy,
+          m.created_at AS createdAt,
+          m.updated_at AS updatedAt,
+          p.code AS practiceCode,
+          p.title AS practiceTitle
+        FROM maps m
+        INNER JOIN practices p
+          ON p.id = m.practice_id
+        WHERE m.practice_id = ?
+      `,
+      [practiceId]
+    );
+
+    const maps = rows as any[];
+
+    if (maps.length === 0) {
+      res.status(404).json({
+        message: "Nessuna mappa associata alla pratica",
+      });
+      return;
+    }
+
+    const map = maps[0];
+
+    const [bags] = await db.query(
+      `
+        SELECT
+          id,
+          code,
+          description,
+          eer_code AS eerCode,
+          color,
+          quantity,
+          unit,
+          packaging_date AS packagingDate,
+          operator_name AS operatorName,
+          position_x AS positionX,
+          position_y AS positionY,
+          position_z AS positionZ,
+          notes,
+          created_at AS createdAt,
+          updated_at AS updatedAt
+        FROM map_bags
+        WHERE map_id = ?
+        ORDER BY position_y, position_x, position_z
+      `,
+      [map.id]
+    );
+
+    res.json({
+      ...map,
+      bags,
+    });
+  } catch (error) {
+    console.error("Error loading practice map:", error);
+
+    res.status(500).json({
+      message:
+        "Errore durante il recupero della mappa della pratica",
     });
   }
 });
@@ -50,18 +150,23 @@ router.get("/:id", async (req, res) => {
     const [rows] = await db.query(
       `
         SELECT
-          id,
-          name,
-          location,
-          customer,
-          responsible,
-          status,
-          notes,
-          created_by AS createdBy,
-          created_at AS createdAt,
-          updated_at AS updatedAt
-        FROM maps
-        WHERE id = ?
+          m.id,
+          m.practice_id AS practiceId,
+          m.name,
+          m.location,
+          m.customer,
+          m.responsible,
+          m.status,
+          m.notes,
+          m.created_by AS createdBy,
+          m.created_at AS createdAt,
+          m.updated_at AS updatedAt,
+          p.code AS practiceCode,
+          p.title AS practiceTitle
+        FROM maps m
+        LEFT JOIN practices p
+          ON p.id = m.practice_id
+        WHERE m.id = ?
       `,
       [id]
     );
@@ -115,23 +220,85 @@ router.get("/:id", async (req, res) => {
 
 /**
  * POST /api/maps
- * Crea una nuova mappa.
+ * Crea la mappa associata a una pratica.
+ *
+ * Una pratica può avere una sola mappa.
  */
 router.post("/", async (req, res) => {
   try {
     const {
+      practiceId,
       name,
       location,
-      customer,
       responsible,
       notes,
       createdBy,
     } = req.body;
 
-    if (!name || !location || !customer || !responsible) {
+    if (
+      !practiceId ||
+      !name ||
+      !location ||
+      !responsible
+    ) {
       res.status(400).json({
         message:
-          "Nome, luogo, cliente e responsabile sono obbligatori",
+          "Pratica, nome, luogo e responsabile sono obbligatori",
+      });
+      return;
+    }
+
+    /*
+     * Recuperiamo la pratica.
+     * Il cliente della mappa deriva direttamente
+     * dalla pratica e non viene inserito manualmente.
+     */
+    const [practiceRows] = await db.query(
+      `
+        SELECT
+          id,
+          code,
+          title,
+          customer
+        FROM practices
+        WHERE id = ?
+      `,
+      [practiceId]
+    );
+
+    const practices = practiceRows as any[];
+
+    if (practices.length === 0) {
+      res.status(404).json({
+        message: "Pratica non trovata",
+      });
+      return;
+    }
+
+    const practice = practices[0];
+
+    /*
+     * Verifica applicativa 1 pratica = 1 mappa.
+     * Il database protegge comunque il vincolo
+     * tramite UNIQUE(practice_id).
+     */
+    const [existingRows] = await db.query(
+      `
+        SELECT id
+        FROM maps
+        WHERE practice_id = ?
+        LIMIT 1
+      `,
+      [practiceId]
+    );
+
+    const existingMaps = existingRows as any[];
+
+    if (existingMaps.length > 0) {
+      res.status(409).json({
+        message:
+          "Questa pratica ha già una mappa associata",
+        mapId: existingMaps[0].id,
       });
       return;
     }
@@ -139,6 +306,7 @@ router.post("/", async (req, res) => {
     const [result] = await db.execute(
       `
         INSERT INTO maps (
+          practice_id,
           name,
           location,
           customer,
@@ -147,12 +315,13 @@ router.post("/", async (req, res) => {
           notes,
           created_by
         )
-        VALUES (?, ?, ?, ?, 'DRAFT', ?, ?)
+        VALUES (?, ?, ?, ?, ?, 'DRAFT', ?, ?)
       `,
       [
+        practiceId,
         name,
         location,
-        customer,
+        practice.customer,
         responsible,
         notes || null,
         createdBy || null,
@@ -165,16 +334,28 @@ router.post("/", async (req, res) => {
 
     res.status(201).json({
       id: insertResult.insertId,
+      practiceId: Number(practiceId),
+      practiceCode: practice.code,
+      practiceTitle: practice.title,
       name,
       location,
-      customer,
+      customer: practice.customer,
       responsible,
       status: "DRAFT",
       notes: notes || null,
       createdBy: createdBy || null,
+      bags: [],
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating map:", error);
+
+    if (error?.code === "ER_DUP_ENTRY") {
+      res.status(409).json({
+        message:
+          "Questa pratica ha già una mappa associata",
+      });
+      return;
+    }
 
     res.status(500).json({
       message: "Errore durante la creazione della mappa",

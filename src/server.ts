@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { db } from "./config/database";
 import mapsRouter from "./routes/maps";
+import practicesRouter from "./routes/practices";
 
 dotenv.config();
 
@@ -20,6 +21,9 @@ app.use(express.json());
 
 // Maps API
 app.use("/api/maps", mapsRouter);
+
+// Practices API
+app.use("/api/practices", practicesRouter);
 
 // Health check API
 app.get("/api/health", (_req, res) => {
