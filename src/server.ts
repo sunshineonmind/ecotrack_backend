@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { db } from "./config/database";
+import mapsRouter from "./routes/maps";
 
 dotenv.config();
 
@@ -16,6 +17,9 @@ app.use(
 );
 
 app.use(express.json());
+
+// Maps API
+app.use("/api/maps", mapsRouter);
 
 // Health check API
 app.get("/api/health", (_req, res) => {
